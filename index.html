@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>我的三消游戏</title>
+    <style>
+        body {
+            font-family: 'Microsoft YaHei', sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            background-color: #2c3e50; /* 深色背景，让图片更突出 */
+            margin: 0;
+            padding-top: 20px;
+            user-select: none;
+        }
+
+        h1 {
+            color: #ecf0f1;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+        }
+
+        .score-board {
+            background: #fff;
+            padding: 10px 40px;
+            border-radius: 25px;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+            font-size: 24px;
+            font-weight: bold;
+            color: #333;
+            margin-bottom: 20px;
+            border: 2px solid #f1c40f;
+        }
+
+        /* === 游戏棋盘 === */
+        .grid {
+            display: flex;
+            flex-wrap: wrap;
+            /* 
+               计算逻辑：
+               宽度 = 8列 * 70px = 560px
+               高度 = 8行 * 74px = 592px 
+               (高度设为74px是为了适配你的 147x154 图片比例)
+            */
+            width: 560px;
+            height: 592px; 
+            background-color: rgba(255, 255, 255, 0.1);
+            border-radius: 10px;
+            padding: 5px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            backdrop-filter: blur(5px);
+        }
+
+        /* === 单个格子 === */
+        .grid div {
+            /* 宽度固定 70px */
+            width: 70px;
+            /* 高度设为 74px，完美适配你的 147:154 比例 */
+            height: 74px; 
+            
+            box-sizing: border-box;
+            cursor: grab;
+            transition: transform 0.2s;
+            
+            /* 图片显示核心设置 */
+            background-repeat: no-repeat;
+            background-position: center;
+            background-size: contain; /* 关键：自动缩放图片以完整显示 */
+        }
+
+        .grid div:active {
+            cursor: grabbing;
+            transform: scale(1.1); /* 抓取时放大效果 */
+            z-index: 100;
+        }
+
+        /* === 图片映射 === */
+        /* 对应 images 文件夹里的 1.png 到 6.png */
+        .candy-red    { background-image: url('images/1.png'); }
+        .candy-yellow { background-image: url('images/2.png'); }
+        .candy-orange { background-image: url('images/3.png'); }
+        .candy-purple { background-image: url('images/4.png'); }
+        .candy-green  { background-image: url('images/5.png'); }
+        .candy-blue   { background-image: url('images/6.png'); }
+
+        .instructions {
+            margin-top: 20px;
+            color: #bdc3c7;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>开心消消乐</h1>
+    <div class="score-board">
+        得分: <span id="score">0</span>
+    </div>
+
+    <div class="grid"></div>
+
+    <div class="instructions">
+        拖动图案交换，凑齐 3 个即可消除
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const grid = document.querySelector('.grid');
+            const scoreDisplay = document.getElementById('score');
+            const width = 8; 
+            const squares = [];
+            let score = 0;
+
+            // 依然使用颜色名作为逻辑标识，但CSS里已经换成了图片
+            const candyColors = [
+                'candy-red',
+                'candy-yellow',
+                'candy-orange',
+                'candy-purple',
+                'candy-green',
+                'candy-blue'
+            ];
+
+            // 1. 创建棋盘
+            function createBoard() {
+                for (let i = 0; i < width * width; i++) {
+                    const square = document.createElement('div');
+                    let randomColor = Math.floor(Math.random() * candyColors.length);
+                    square.classList.add(candyColors[randomColor]);
+                    square.setAttribute('draggable', true);
+                    square.setAttribute('id', i);
+                    grid.appendChild(square);
+                    squares.push(square);
+                }
+            }
+            createBoard();
+
+            // 2. 拖拽逻辑
+            let colorBeingDragged;
+            let colorBeingReplaced;
+            let squareIdBeingDragged;
+            let squareIdBeingReplaced;
+
+            squares.forEach(square => square.addEventListener('dragstart', dragStart));
+            squares.forEach(square => square.addEventListener('dragend', dragEnd));
+            squares.forEach(square => square.addEventListener('dragover', dragOver));
+            squares.forEach(square => square.addEventListener('dragenter', dragEnter));
+            squares.forEach(square => square.addEventListener('dragleave', dragLeave));
+            squares.forEach(square => square.addEventListener('drop', dragDrop));
+
+            function dragStart() {
+                colorBeingDragged = this.className;
+                squareIdBeingDragged = parseInt(this.id);
+            }
+
+            function dragOver(e) { e.preventDefault(); }
+            function dragEnter(e) { e.preventDefault(); }
+            function dragLeave() { }
+
+            function dragDrop() {
+                colorBeingReplaced = this.className;
+                squareIdBeingReplaced = parseInt(this.id);
+                this.className = colorBeingDragged;
+                squares[squareIdBeingDragged].className = colorBeingReplaced;
+            }
+
+            function dragEnd() {
+                let validMoves = [
+                    squareIdBeingDragged - 1,
+                    squareIdBeingDragged - width,
+                    squareIdBeingDragged + 1,
+                    squareIdBeingDragged + width
+                ];
+                let validMove = validMoves.includes(squareIdBeingReplaced);
+
+                if (squareIdBeingReplaced && validMove) {
+                    squareIdBeingReplaced = null;
+                } else if (squareIdBeingReplaced && !validMove) {
+                    squares[squareIdBeingReplaced].className = colorBeingReplaced;
+                    squares[squareIdBeingDragged].className = colorBeingDragged;
+                } else  {
+                    squares[squareIdBeingDragged].className = colorBeingDragged;
+                }
+            }
+
+            // 3. 消除逻辑
+            function checkRowForThree() {
+                for (let i = 0; i < 64; i++) {
+                    let rowOfThree = [i, i + 1, i + 2];
+                    let decidedColor = squares[i].className;
+                    const isBlank = squares[i].className === '';
+                    const notValid = [6, 7, 14, 15, 22, 23, 30, 31, 38, 39, 46, 47, 54, 55, 62, 63];
+                    if (notValid.includes(i)) continue;
+
+                    if (rowOfThree.every(index => squares[index].className === decidedColor && !isBlank)) {
+                        score += 3;
+                        scoreDisplay.innerHTML = score;
+                        rowOfThree.forEach(index => { squares[index].className = ''; });
+                    }
+                }
+            }
+
+            function checkColumnForThree() {
+                for (let i = 0; i < 47; i++) {
+                    let columnOfThree = [i, i + width, i + width * 2];
+                    let decidedColor = squares[i].className;
+                    const isBlank = squares[i].className === '';
+
+                    if (columnOfThree.every(index => squares[index].className === decidedColor && !isBlank)) {
+                        score += 3;
+                        scoreDisplay.innerHTML = score;
+                        columnOfThree.forEach(index => { squares[index].className = ''; });
+                    }
+                }
+            }
+
+            // 4. 下落与生成
+            function moveDown() {
+                for (let i = 0; i < 55; i++) {
+                    if (squares[i + width].className === '') {
+                        squares[i + width].className = squares[i].className;
+                        squares[i].className = '';
+                        const firstRow = [0, 1, 2, 3, 4, 5, 6, 7];
+                        const isFirstRow = firstRow.includes(i);
+                        if (isFirstRow && squares[i].className === '') {
+                            let randomColor = Math.floor(Math.random() * candyColors.length);
+                            squares[i].className = candyColors[randomColor];
+                        }
+                    }
+                }
+                // 补充顶部
+                for(let i=0; i<width; i++) {
+                     if(squares[i].className === '') {
+                        let randomColor = Math.floor(Math.random() * candyColors.length);
+                        squares[i].className = candyColors[randomColor];
+                     }
+                }
+            }
+
+            // 5. 循环
+            window.setInterval(function() {
+                moveDown();
+                checkRowForThree();
+                checkColumnForThree();
+            }, 100);
+        });
+    </script>
+</body>
+</html>
