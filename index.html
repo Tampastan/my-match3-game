@@ -2,10 +2,11 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <!-- 关键修改：禁止用户缩放，锁定视口 -->
+    <!-- 强制禁止缩放，锁定视口宽度 -->
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>我的三消游戏</title>
     <style>
+        /* 全局禁止滚动和选中 */
         body {
             font-family: 'Microsoft YaHei', sans-serif;
             display: flex;
@@ -13,68 +14,72 @@
             align-items: center;
             background-color: #2c3e50;
             margin: 0;
-            padding-top: 20px;
-            /* 禁止选中文字和图片 */
+            padding-top: 10px;
             user-select: none;
-            -webkit-user-select: none;
-            /* 禁止页面在手机上产生回弹效果 */
-            overscroll-behavior: none; 
+            -webkit-user-select: none; /* Safari 专用 */
+            touch-action: none; /* 关键：禁止所有默认手势 */
+            overscroll-behavior: none; /* 禁止橡皮筋回弹 */
+            position: fixed; /* 暴力锁定 body 不让动 */
+            width: 100%;
+            height: 100%;
         }
 
         h1 {
             color: #ecf0f1;
-            margin-bottom: 10px;
-            font-size: 24px;
+            margin: 5px 0 10px 0;
+            font-size: 22px;
+            pointer-events: none; /* 让点击穿透文字 */
         }
 
         .score-board {
             background: #fff;
-            padding: 5px 30px;
-            border-radius: 25px;
-            font-size: 20px;
+            padding: 5px 20px;
+            border-radius: 20px;
+            font-size: 18px;
             font-weight: bold;
             color: #333;
             margin-bottom: 10px;
             border: 2px solid #f1c40f;
+            pointer-events: none;
         }
 
         .grid {
             display: flex;
             flex-wrap: wrap;
-            width: 350px; /* 适配手机宽度 */
-            height: 370px; /* 适配手机高度 */
-            background-color: rgba(255, 255, 255, 0.1);
-            border-radius: 10px;
-            padding: 5px;
-            backdrop-filter: blur(5px);
+            /* 适配小屏手机 (320px) */
+            width: 320px; 
+            height: 336px; /* 8行 * 42px */
+            background-color: rgba(255, 255, 255, 0.15);
+            border-radius: 8px;
+            padding: 4px; /* 稍微留点边距 */
             
-            /* === 核心修改：禁止浏览器处理触摸手势（解决滑动页面问题） === */
+            /* 确保触摸事件只在 grid 内部生效 */
             touch-action: none; 
         }
 
         .grid div {
-            /* 手机屏幕小，重新计算尺寸：
-               宽度：350 / 8 ≈ 43.75px -> 取 43px
-               高度按比例：43 * (154/147) ≈ 45px
-            */
-            width: 43px;
-            height: 45px;
+            /* 进一步缩小尺寸以防爆屏 */
+            width: 40px;
+            height: 42px;
             
             box-sizing: border-box;
-            /* 既支持鼠标抓取，也支持手指 */
-            cursor: pointer; 
-            transition: transform 0.2s;
+            cursor: pointer;
             
             background-repeat: no-repeat;
             background-position: center;
             background-size: contain; 
+            
+            /* 加上边框让选中更明显 */
+            border: 2px solid transparent; 
+            border-radius: 5px;
         }
 
-        /* 选中状态的高亮反馈 */
+        /* 选中状态（点击模式用） */
         .selected {
-            border: 2px solid white;
-            opacity: 0.8;
+            background-color: rgba(255, 255, 255, 0.3);
+            border: 2px solid #f1c40f !important;
             transform: scale(0.9);
+            box-shadow: 0 0 10px #f1c40f;
         }
 
         .candy-red    { background-image: url('images/1.png'); }
@@ -89,7 +94,8 @@
             color: #bdc3c7;
             font-size: 12px;
             text-align: center;
-            padding: 0 20px;
+            line-height: 1.5;
+            pointer-events: none;
         }
     </style>
 </head>
@@ -103,7 +109,8 @@
     <div class="grid"></div>
 
     <div class="instructions">
-        手指滑动交换图案<br>凑齐 3 个即可消除
+        方式1：手指滑动交换<br>
+        方式2：点击选中 A，再点击 B 交换
     </div>
 
     <script>
@@ -119,13 +126,12 @@
                 'candy-purple', 'candy-green', 'candy-blue'
             ];
 
-            // 1. 创建棋盘
+            // 1. 初始化棋盘
             function createBoard() {
                 for (let i = 0; i < width * width; i++) {
                     const square = document.createElement('div');
                     let randomColor = Math.floor(Math.random() * candyColors.length);
                     square.classList.add(candyColors[randomColor]);
-                    square.setAttribute('draggable', true); // 保留电脑端拖拽
                     square.setAttribute('id', i);
                     grid.appendChild(square);
                     squares.push(square);
@@ -133,132 +139,132 @@
             }
             createBoard();
 
-            // 变量定义
-            let colorBeingDragged;
-            let colorBeingReplaced;
-            let squareIdBeingDragged;
-            let squareIdBeingReplaced;
-
-            // === 电脑端鼠标事件 ===
-            squares.forEach(square => square.addEventListener('dragstart', dragStart));
-            squares.forEach(square => square.addEventListener('dragend', dragEnd));
-            squares.forEach(square => square.addEventListener('dragover', (e) => e.preventDefault()));
-            squares.forEach(square => square.addEventListener('dragenter', (e) => e.preventDefault()));
-            squares.forEach(square => square.addEventListener('drop', dragDrop));
-
-            // === 手机端触摸事件 (新增) ===
-            let startX, startY;
+            // === 核心交互逻辑 (同时支持 点击 和 滑动) ===
             
+            let selectedSquareId = null; // 用于记录第一次点击的格子
+            let startX, startY;
+            let touchStartId = null;
+
             squares.forEach(square => {
-                square.addEventListener('touchstart', touchStart, {passive: false});
-                square.addEventListener('touchmove', touchMove, {passive: false});
-                square.addEventListener('touchend', touchEnd);
+                // 1. 触摸开始
+                square.addEventListener('touchstart', (e) => {
+                    // 必须阻止默认，否则 Safari 会以为你要滚动页面
+                    // 但注意：这可能会阻止点击事件，所以我们在 touchend 里手动处理点击
+                    e.preventDefault(); 
+                    
+                    startX = e.touches[0].clientX;
+                    startY = e.touches[0].clientY;
+                    touchStartId = parseInt(square.id);
+                    
+                    // 视觉反馈：按下去的时候稍微变暗
+                    square.style.opacity = '0.7';
+                }, { passive: false }); // 关键：关闭 passive 才能 preventDefault
+
+                // 2. 触摸移动 (防止页面滚动)
+                square.addEventListener('touchmove', (e) => {
+                    e.preventDefault(); // 暴力阻止滚动
+                }, { passive: false });
+
+                // 3. 触摸结束 (判断是 点击 还是 滑动)
+                square.addEventListener('touchend', (e) => {
+                    square.style.opacity = '1'; // 恢复透明度
+                    
+                    const endX = e.changedTouches[0].clientX;
+                    const endY = e.changedTouches[0].clientY;
+                    const diffX = endX - startX;
+                    const diffY = endY - startY;
+                    const moveThreshold = 20; // 滑动超过20像素才算滑，否则算点
+
+                    // === 情况A：滑动 (Swipe) ===
+                    if (Math.abs(diffX) > moveThreshold || Math.abs(diffY) > moveThreshold) {
+                        let targetId;
+                        if (Math.abs(diffX) > Math.abs(diffY)) {
+                            // 左右滑
+                            if (diffX > 0) targetId = touchStartId + 1;
+                            else targetId = touchStartId - 1;
+                        } else {
+                            // 上下滑
+                            if (diffY > 0) targetId = touchStartId + width;
+                            else targetId = touchStartId - width;
+                        }
+                        // 执行交换
+                        attemptSwap(touchStartId, targetId);
+                        // 滑动操作后，取消之前的选中状态
+                        if (selectedSquareId !== null) {
+                            squares[selectedSquareId].classList.remove('selected');
+                            selectedSquareId = null;
+                        }
+                    } 
+                    // === 情况B：点击 (Tap) ===
+                    else {
+                        handleTap(touchStartId);
+                    }
+                });
+                
+                // 4. 兼容电脑鼠标点击
+                square.addEventListener('mousedown', () => {
+                   handleTap(parseInt(square.id));
+                });
             });
 
-            // --- 电脑端逻辑 ---
-            function dragStart() {
-                colorBeingDragged = this.className;
-                squareIdBeingDragged = parseInt(this.id);
-            }
-            function dragDrop() {
-                colorBeingReplaced = this.className;
-                squareIdBeingReplaced = parseInt(this.id);
-                this.className = colorBeingDragged;
-                squares[squareIdBeingDragged].className = colorBeingReplaced;
-            }
-
-            // --- 手机端逻辑 ---
-            function touchStart(e) {
-                // 记录手指按下的坐标
-                startX = e.touches[0].clientX;
-                startY = e.touches[0].clientY;
-                
-                colorBeingDragged = this.className;
-                squareIdBeingDragged = parseInt(this.id);
-                
-                // 阻止默认行为（防止某些安卓机长按弹出菜单）
-                // e.preventDefault(); 
-            }
-
-            function touchMove(e) {
-                // 关键：阻止页面跟随手指滚动
-                e.preventDefault(); 
-            }
-
-            function touchEnd(e) {
-                // 计算手指离开时的坐标
-                const endX = e.changedTouches[0].clientX;
-                const endY = e.changedTouches[0].clientY;
-                
-                // 计算移动距离
-                const diffX = endX - startX;
-                const diffY = endY - startY;
-                
-                // 判断滑动方向（绝对值谁大听谁的）
-                // 只有滑动距离超过 10px 才算移动，防止误触
-                if (Math.abs(diffX) > Math.abs(diffY)) {
-                    // 水平移动
-                    if (Math.abs(diffX) > 10) {
-                        if (diffX > 0) squareIdBeingReplaced = squareIdBeingDragged + 1; // 右
-                        else squareIdBeingReplaced = squareIdBeingDragged - 1; // 左
-                    } else return;
+            // 点击逻辑：点一下选中，点第二下交换
+            function handleTap(index) {
+                // 如果还没选中过
+                if (selectedSquareId === null) {
+                    selectedSquareId = index;
+                    squares[index].classList.add('selected');
                 } else {
-                    // 垂直移动
-                    if (Math.abs(diffY) > 10) {
-                        if (diffY > 0) squareIdBeingReplaced = squareIdBeingDragged + width; // 下
-                        else squareIdBeingReplaced = squareIdBeingDragged - width; // 上
-                    } else return;
-                }
-
-                // 执行交换逻辑（复用 dragEnd 的逻辑）
-                // 1. 边界检查
-                if(squareIdBeingReplaced < 0 || squareIdBeingReplaced >= 64) return;
-
-                // 2. 模拟交换
-                const targetSquare = squares[squareIdBeingReplaced];
-                colorBeingReplaced = targetSquare.className;
-                
-                targetSquare.className = colorBeingDragged;
-                squares[squareIdBeingDragged].className = colorBeingReplaced;
-
-                // 3. 验证有效性
-                dragEnd(); 
-            }
-
-            // --- 通用结算逻辑 ---
-            function dragEnd() {
-                let validMoves = [
-                    squareIdBeingDragged - 1,
-                    squareIdBeingDragged - width,
-                    squareIdBeingDragged + 1,
-                    squareIdBeingDragged + width
-                ];
-
-                let validMove = validMoves.includes(squareIdBeingReplaced);
-
-                if (squareIdBeingReplaced && validMove) {
-                    // 检查是否有消除
-                    let isRowMatch = checkRowForThree();
-                    let isColMatch = checkColumnForThree();
-
-                    if (!isRowMatch && !isColMatch) {
-                        // 没消除，换回来
-                        squares[squareIdBeingReplaced].className = colorBeingReplaced;
-                        squares[squareIdBeingDragged].className = colorBeingDragged;
+                    // 如果点的是同一个，取消选中
+                    if (selectedSquareId === index) {
+                        squares[index].classList.remove('selected');
+                        selectedSquareId = null;
                     } else {
-                        squareIdBeingReplaced = null;
+                        // 点的是另一个，尝试交换
+                        squares[selectedSquareId].classList.remove('selected');
+                        attemptSwap(selectedSquareId, index);
+                        selectedSquareId = null;
                     }
-                } else if (squareIdBeingReplaced && !validMove) {
-                    squares[squareIdBeingReplaced].className = colorBeingReplaced;
-                    squares[squareIdBeingDragged].className = colorBeingDragged;
-                } else {
-                     // 复位
-                     if(squares[squareIdBeingDragged])
-                        squares[squareIdBeingDragged].className = colorBeingDragged;
                 }
             }
 
-            // 3. 消除检查 (逻辑不变)
+            // 统一的交换处理函数
+            function attemptSwap(srcId, targetId) {
+                // 1. 边界检查
+                if (targetId < 0 || targetId >= 64) return;
+                
+                // 2. 检查是否相邻 (防止跨行交换)
+                const validMoves = [srcId - 1, srcId - width, srcId + 1, srcId + width];
+                
+                // 特殊处理：防止最左边和上一行最右边交换
+                if (srcId % width === 0 && targetId === srcId - 1) return;
+                if (srcId % width === width - 1 && targetId === srcId + 1) return;
+
+                if (!validMoves.includes(targetId)) return; // 不相邻，不交换
+
+                // 3. 交换颜色类名
+                let srcSquare = squares[srcId];
+                let targetSquare = squares[targetId];
+                let srcColor = srcSquare.className.split(' ').find(c => c.startsWith('candy-'));
+                let targetColor = targetSquare.className.split(' ').find(c => c.startsWith('candy-'));
+                
+                // 临时移除 .selected 防止干扰
+                srcSquare.className = targetColor || '';
+                targetSquare.className = srcColor || '';
+
+                // 4. 检查是否有效
+                let isRowMatch = checkRowForThree();
+                let isColMatch = checkColumnForThree();
+
+                if (!isRowMatch && !isColMatch) {
+                    // 无效交换，延迟一小会儿换回来 (视觉效果)
+                    setTimeout(() => {
+                        srcSquare.className = srcColor || '';
+                        targetSquare.className = targetColor || '';
+                    }, 200);
+                }
+            }
+
+            // === 消除逻辑 (保持不变) ===
             function checkRowForThree() {
                 let matchFound = false;
                 for (let i = 0; i < 64; i++) {
@@ -268,7 +274,7 @@
                     const notValid = [6, 7, 14, 15, 22, 23, 30, 31, 38, 39, 46, 47, 54, 55, 62, 63];
                     if (notValid.includes(i)) continue;
 
-                    if (rowOfThree.every(index => squares[index].className === decidedColor && !isBlank)) {
+                    if (rowOfThree.every(index => squares[index].className.includes(decidedColor) && !isBlank)) {
                         score += 3;
                         scoreDisplay.innerHTML = score;
                         rowOfThree.forEach(index => { squares[index].className = ''; });
@@ -285,7 +291,7 @@
                     let decidedColor = squares[i].className;
                     const isBlank = squares[i].className === '';
 
-                    if (columnOfThree.every(index => squares[index].className === decidedColor && !isBlank)) {
+                    if (columnOfThree.every(index => squares[index].className.includes(decidedColor) && !isBlank)) {
                         score += 3;
                         scoreDisplay.innerHTML = score;
                         columnOfThree.forEach(index => { squares[index].className = ''; });
@@ -295,15 +301,13 @@
                 return matchFound;
             }
 
-            // 4. 下落逻辑
             function moveDown() {
                 for (let i = 0; i < 55; i++) {
                     if (squares[i + width].className === '') {
                         squares[i + width].className = squares[i].className;
                         squares[i].className = '';
                         const firstRow = [0, 1, 2, 3, 4, 5, 6, 7];
-                        const isFirstRow = firstRow.includes(i);
-                        if (isFirstRow && squares[i].className === '') {
+                        if (firstRow.includes(i) && squares[i].className === '') {
                             let randomColor = Math.floor(Math.random() * candyColors.length);
                             squares[i].className = candyColors[randomColor];
                         }
@@ -317,7 +321,6 @@
                 }
             }
 
-            // 循环
             window.setInterval(function() {
                 moveDown();
                 checkRowForThree();
